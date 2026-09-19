@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "An incident platform sends events to external systems. Those systems may be unavailable, slow, or return errors. The platform needs clear delivery history and predictable retry behavior without creating multiple logical jobs for the same submitted event.",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+ "scripts": {
+  "test": "jest --runInBand"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -13,5 +13,9 @@
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2",
+    "supertest": "^7.2.2"
   }
 }
