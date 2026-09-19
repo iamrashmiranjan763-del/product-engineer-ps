@@ -147,7 +147,7 @@ updateAttempt.run(
     eventId
   );
 
-  res.json({
+  res.status(201).json({
     message: "Retry created",
     eventId,
     attemptNumber: nextAttemptNumber,
