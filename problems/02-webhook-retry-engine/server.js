@@ -9,6 +9,20 @@ const WEBHOOK_URL =
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
+function isRetryableFailure(httpStatus) {
+  if (httpStatus === null) {
+    return true;
+  }
+
+  return (
+    httpStatus === 408 ||
+    httpStatus === 429 ||
+    httpStatus >= 500
+  );
+}
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 app.use(express.json());
 
@@ -146,7 +160,12 @@ if (event.attempt_count >= MAX_ATTEMPTS) {
     nextAttemptNumber,
     "pending"
   );
+  await wait(RETRY_DELAY_MS);
 const delivery = await deliverWebhook(event);
+
+const retryable =
+  delivery.status === "failed" &&
+  isRetryableFailure(delivery.httpStatus);
 
 const attemptStatus = delivery.status;
 const httpStatus = delivery.httpStatus;
@@ -180,11 +199,14 @@ updateAttempt.run(
     eventId
   );
 
-  res.status(201).json({
-    message: "Retry created",
-    eventId,
-    attemptNumber: nextAttemptNumber,
-  });
+ res.status(201).json({
+  message: "Retry created",
+  eventId,
+  attemptNumber: nextAttemptNumber,
+  status: attemptStatus,
+  httpStatus,
+  retryable,
+});
 });
 app.get("/events/:eventId", (req, res) => {
   const { eventId } = req.params;
