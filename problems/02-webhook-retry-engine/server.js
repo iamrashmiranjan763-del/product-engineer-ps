@@ -244,10 +244,34 @@ const attempts = db
     attempts,
   });
 });
+
+async function processScheduledRetries() {
+  const now = new Date().toISOString();
+
+  const scheduledAttempts = db
+    .prepare(`
+      SELECT DISTINCT event_id
+      FROM delivery_attempts
+      WHERE status = 'pending'
+        AND next_retry_at IS NOT NULL
+        AND next_retry_at <= ?
+    `)
+    .all(now);
+
+  for (const attempt of scheduledAttempts) {
+    console.log(`Retry ready for event: ${attempt.event_id}`);
+  }
+}
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  setInterval(() => {
+    processScheduledRetries().catch((error) => {
+      console.error("Scheduled retry processor error:", error);
+    });
+  }, 1000);
 }
 
 module.exports = app;
