@@ -153,6 +153,31 @@ updateAttempt.run(
     attemptNumber: nextAttemptNumber,
   });
 });
+app.get("/events/:eventId", (req, res) => {
+  const { eventId } = req.params;
+
+  const event = db
+    .prepare("SELECT * FROM events WHERE event_id = ?")
+    .get(eventId);
+
+  if (!event) {
+    return res.status(404).json({
+      error: "Event not found",
+    });
+  }
+const attempts = db
+  .prepare(`
+    SELECT attempt_number, status, http_status, error_message
+    FROM delivery_attempts
+    WHERE event_id = ?
+    ORDER BY attempt_number
+  `)
+  .all(eventId);
+  res.json({
+    event,
+    attempts,
+  });
+});
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
