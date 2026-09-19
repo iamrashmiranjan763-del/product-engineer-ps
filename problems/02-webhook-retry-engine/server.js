@@ -76,6 +76,17 @@ res.status(201).json({
     },
   });
 });
+function simulateDelivery() {
+  const deliverySucceeded = Math.random() < 0.7;
+
+  return {
+    status: deliverySucceeded ? "success" : "failed",
+    httpStatus: deliverySucceeded ? 200 : 500,
+    errorMessage: deliverySucceeded
+      ? null
+      : "Simulated webhook delivery failure",
+  };
+}
 app.post("/events/:eventId/retry", (req, res) => {
   const { eventId } = req.params;
 
@@ -102,13 +113,12 @@ app.post("/events/:eventId/retry", (req, res) => {
     nextAttemptNumber,
     "pending"
   );
-const deliverySucceeded = Math.random() < 0.7;
+  const delivery = simulateDelivery();
 
-const attemptStatus = deliverySucceeded ? "success" : "failed";
-const httpStatus = deliverySucceeded ? 200 : 500;
-const errorMessage = deliverySucceeded
-  ? null
-  : "Simulated webhook delivery failure";
+const attemptStatus = delivery.status;
+const httpStatus = delivery.httpStatus;
+const errorMessage = delivery.errorMessage;
+
 
 const updateAttempt = db.prepare(`
   UPDATE delivery_attempts
