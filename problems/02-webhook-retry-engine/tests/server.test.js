@@ -77,4 +77,27 @@ expect(retryResponse.statusCode).toBe(201);
 
   expect(after.body.attempts.length).toBe(attemptsBefore + 1);
 });
+
+test("retry stops after maximum delivery attempts", async () => {
+  db.prepare(`
+    UPDATE events
+    SET attempt_count = 3
+    WHERE event_id = ?
+  `).run(TEST_EVENT_ID);
+
+  const response = await request(app)
+    .post(`/events/${TEST_EVENT_ID}/retry`);
+
+  expect(response.statusCode).toBe(409);
+  expect(response.body).toEqual({
+    error: "Maximum delivery attempts reached",
+    eventId: TEST_EVENT_ID,
+    maxAttempts: 3,
+  });
+
+  const after = await request(app)
+    .get(`/events/${TEST_EVENT_ID}`);
+
+ expect(after.body.event.attempt_count).toBe(3);
+});
 });

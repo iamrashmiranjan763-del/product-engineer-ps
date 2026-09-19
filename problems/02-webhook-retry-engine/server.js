@@ -2,7 +2,13 @@ const express = require("express");
 const db = require("./src/database");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+const WEBHOOK_URL =
+  process.env.WEBHOOK_URL || "http://localhost:4000/webhook";
+
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1000;
 
 app.use(express.json());
 
@@ -76,18 +82,39 @@ res.status(201).json({
     },
   });
 });
-function simulateDelivery() {
-  const deliverySucceeded = Math.random() < 0.7;
+async function deliverWebhook(event) {
+  try {
+    const response = await fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        eventId: event.event_id,
+        type: event.type,
+        occurredAt: event.occurred_at,
+        payload: JSON.parse(event.payload),
+      }),
+    });
 
-  return {
-    status: deliverySucceeded ? "success" : "failed",
-    httpStatus: deliverySucceeded ? 200 : 500,
-    errorMessage: deliverySucceeded
-      ? null
-      : "Simulated webhook delivery failure",
-  };
+    const success = response.status >= 200 && response.status < 300;
+
+    return {
+      status: success ? "success" : "failed",
+      httpStatus: response.status,
+      errorMessage: success
+        ? null
+        : `Webhook returned HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      httpStatus: null,
+      errorMessage: error.message,
+    };
+  }
 }
-app.post("/events/:eventId/retry", (req, res) => {
+app.post("/events/:eventId/retry", async (req, res) => {
   const { eventId } = req.params;
 
   const event = db
@@ -99,7 +126,13 @@ app.post("/events/:eventId/retry", (req, res) => {
       error: "Event not found",
     });
   }
-
+if (event.attempt_count >= MAX_ATTEMPTS) {
+  return res.status(409).json({
+    error: "Maximum delivery attempts reached",
+    eventId,
+    maxAttempts: MAX_ATTEMPTS,
+  });
+}
   const nextAttemptNumber = event.attempt_count + 1;
 
   const insertAttempt = db.prepare(`
@@ -113,7 +146,7 @@ app.post("/events/:eventId/retry", (req, res) => {
     nextAttemptNumber,
     "pending"
   );
-  const delivery = simulateDelivery();
+const delivery = await deliverWebhook(event);
 
 const attemptStatus = delivery.status;
 const httpStatus = delivery.httpStatus;
@@ -165,6 +198,7 @@ app.get("/events/:eventId", (req, res) => {
       error: "Event not found",
     });
   }
+
 const attempts = db
   .prepare(`
     SELECT attempt_number, status, http_status, error_message
