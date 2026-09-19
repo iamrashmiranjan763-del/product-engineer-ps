@@ -9,6 +9,10 @@ const WEBHOOK_URL =
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
+
+function getRetryDelay(attemptNumber) {
+  return RETRY_DELAY_MS * Math.pow(2, attemptNumber - 1);
+}
 function isRetryableFailure(httpStatus) {
   if (httpStatus === null) {
     return true;
@@ -160,7 +164,7 @@ if (event.attempt_count >= MAX_ATTEMPTS) {
     nextAttemptNumber,
     "pending"
   );
-  await wait(RETRY_DELAY_MS);
+await wait(getRetryDelay(nextAttemptNumber));
 const delivery = await deliverWebhook(event);
 
 const retryable =

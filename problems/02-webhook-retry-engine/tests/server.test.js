@@ -100,4 +100,24 @@ test("retry stops after maximum delivery attempts", async () => {
 
  expect(after.body.event.attempt_count).toBe(3);
 });
+test("retry uses exponential backoff delay", async () => {
+  // Make the next retry attempt number 2.
+  db.prepare(`
+    UPDATE events
+    SET attempt_count = 1
+    WHERE event_id = ?
+  `).run(TEST_EVENT_ID);
+
+  const start = Date.now();
+
+  const response = await request(app)
+    .post(`/events/${TEST_EVENT_ID}/retry`);
+
+  const elapsed = Date.now() - start;
+
+  expect(response.statusCode).toBe(201);
+
+  // Attempt 2 should wait about 2000 ms.
+  expect(elapsed).toBeGreaterThanOrEqual(1900);
+});
 });
