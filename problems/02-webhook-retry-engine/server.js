@@ -152,19 +152,25 @@ if (event.attempt_count >= MAX_ATTEMPTS) {
   });
 }
   const nextAttemptNumber = event.attempt_count + 1;
+  const retryDelay = getRetryDelay(nextAttemptNumber);
 
-  const insertAttempt = db.prepare(`
-    INSERT INTO delivery_attempts
-    (event_id, attempt_number, status)
-    VALUES (?, ?, ?)
-  `);
+const nextRetryAt = new Date(
+  Date.now() + retryDelay
+).toISOString();
 
-  insertAttempt.run(
-    eventId,
-    nextAttemptNumber,
-    "pending"
-  );
-await wait(getRetryDelay(nextAttemptNumber));
+ const insertAttempt = db.prepare(`
+  INSERT INTO delivery_attempts
+  (event_id, attempt_number, status, next_retry_at)
+  VALUES (?, ?, ?, ?)
+`);
+
+insertAttempt.run(
+  eventId,
+  nextAttemptNumber,
+  "pending",
+  nextRetryAt
+);
+await wait(retryDelay);
 const delivery = await deliverWebhook(event);
 
 const retryable =

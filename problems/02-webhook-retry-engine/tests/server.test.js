@@ -120,4 +120,29 @@ test("retry uses exponential backoff delay", async () => {
   // Attempt 2 should wait about 2000 ms.
   expect(elapsed).toBeGreaterThanOrEqual(1900);
 });
+test("retry stores next retry timestamp", async () => {
+    db.prepare(`
+  UPDATE events
+  SET attempt_count = 0
+  WHERE event_id = ?
+`).run(TEST_EVENT_ID);
+  const response = await request(app)
+    .post(`/events/${TEST_EVENT_ID}/retry`);
+
+  expect(response.statusCode).toBe(201);
+
+  const attempt = db.prepare(`
+    SELECT next_retry_at
+    FROM delivery_attempts
+    WHERE event_id = ?
+    ORDER BY attempt_number DESC
+    LIMIT 1
+  `).get(TEST_EVENT_ID);
+
+  expect(attempt.next_retry_at).toBeTruthy();
+
+  const retryTime = new Date(attempt.next_retry_at).getTime();
+
+  expect(Number.isNaN(retryTime)).toBe(false);
+});
 });

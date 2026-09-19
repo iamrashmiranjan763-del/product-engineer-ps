@@ -36,14 +36,31 @@ db.exec(`
     attempt_number INTEGER NOT NULL,
     status TEXT NOT NULL,
     http_status INTEGER,
-    error_message TEXT,
-    attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   error_message TEXT,
+next_retry_at TEXT,
+attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (event_id)
       REFERENCES events(event_id)
       ON DELETE CASCADE
   );
 `);
+const attemptColumns = db
+  .prepare("PRAGMA table_info(delivery_attempts)")
+  .all();
+
+const hasNextRetryAt = attemptColumns.some(
+  (column) => column.name === "next_retry_at"
+);
+
+if (!hasNextRetryAt) {
+  db.exec(`
+    ALTER TABLE delivery_attempts
+    ADD COLUMN next_retry_at TEXT
+  `);
+
+  console.log("Added next_retry_at column");
+}
 
 console.log("Database tables ready");
 
