@@ -175,5 +175,40 @@ console.log("Scheduled attempt after processing:", attempt);
   expect(attempt.status).not.toBe("pending");
   expect(attempt.next_retry_at).toBeNull();
 });
+test("repeated ingestion of the same eventId is idempotent", async () => {
+  const eventId = `evt_duplicate_${Date.now()}`;
+
+  const eventPayload = {
+    eventId,
+    type: "incident.created",
+    occurredAt: new Date().toISOString(),
+    payload: {
+      incidentId: "inc_test",
+      severity: "high",
+    },
+  };
+
+  const firstResponse = await request(app)
+    .post("/events")
+    .send(eventPayload);
+
+  expect(firstResponse.statusCode).toBe(201);
+
+  const secondResponse = await request(app)
+    .post("/events")
+    .send(eventPayload);
+
+  expect(secondResponse.statusCode).toBe(200);
+  expect(secondResponse.body.duplicate).toBe(true);
+  expect(secondResponse.body.eventId).toBe(eventId);
+
+  const attempts = db.prepare(`
+    SELECT *
+    FROM delivery_attempts
+    WHERE event_id = ?
+  `).all(eventId);
+
+  expect(attempts.length).toBe(1);
+});
 
 });

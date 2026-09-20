@@ -36,7 +36,7 @@ app.get("/", (req, res) => {
   });
 });
 
-app.post("/events", (req, res) => {
+app.post("/events", async (req, res) => {
   const { eventId, type, occurredAt, payload } = req.body;
 
   if (!eventId || !type || !occurredAt || payload === undefined) {
@@ -82,14 +82,37 @@ insertAttempt.run(
   "pending"
 );
 
+const event = db
+  .prepare("SELECT * FROM events WHERE event_id = ?")
+  .get(eventId);
+
+const delivery = await deliverWebhook(event);
+db.prepare(`
+  UPDATE delivery_attempts
+  SET status = ?,
+      http_status = ?,
+      error_message = ?
+  WHERE event_id = ?
+    AND attempt_number = 1
+`).run(
+  delivery.status,
+  delivery.httpStatus,
+  delivery.errorMessage,
+  eventId
+);
+
 const updateAttemptCount = db.prepare(`
   UPDATE events
-  SET attempt_count = attempt_count + 1,
+  SET status = ?,
+      attempt_count = attempt_count + 1,
       updated_at = CURRENT_TIMESTAMP
   WHERE event_id = ?
 `);
 
-updateAttemptCount.run(eventId);
+updateAttemptCount.run(
+  delivery.status,
+  eventId
+);
 res.status(201).json({
     message: "Event received",
     event: {
@@ -233,7 +256,7 @@ app.get("/events/:eventId", (req, res) => {
 
 const attempts = db
   .prepare(`
-    SELECT attempt_number, status, http_status, error_message
+SELECT attempt_number, status, http_status, error_message, attempted_at      
     FROM delivery_attempts
     WHERE event_id = ?
     ORDER BY attempt_number
