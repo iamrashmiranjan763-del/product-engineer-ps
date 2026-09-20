@@ -1,5 +1,5 @@
 const request = require("supertest");
-const app = require("../server");
+const { app, processScheduledRetries } = require("../server");
 const db = require("../src/database");
 
 const TEST_EVENT_ID = `evt_test_${Date.now()}`;
@@ -145,4 +145,35 @@ test("retry stores next retry timestamp", async () => {
 
   expect(Number.isNaN(retryTime)).toBe(false);
 });
+test("scheduled retry processor completes pending retry", async () => {
+  db.prepare(`
+    UPDATE events
+    SET attempt_count = 0
+    WHERE event_id = ?
+  `).run(TEST_EVENT_ID);
+
+  db.prepare(`
+    INSERT INTO delivery_attempts
+    (event_id, attempt_number, status, next_retry_at)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    TEST_EVENT_ID,
+    1,
+    "pending",
+    new Date(Date.now() - 1000).toISOString()
+  );
+
+await processScheduledRetries();
+
+  const attempt = db.prepare(`
+  SELECT status, next_retry_at
+  FROM delivery_attempts
+  WHERE event_id = ?
+    AND attempt_number = 1
+`).get(TEST_EVENT_ID);
+console.log("Scheduled attempt after processing:", attempt);
+  expect(attempt.status).not.toBe("pending");
+  expect(attempt.next_retry_at).toBeNull();
+});
+
 });

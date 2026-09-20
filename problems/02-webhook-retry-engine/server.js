@@ -245,12 +245,12 @@ const attempts = db
   });
 });
 
-async function processScheduledRetries() {
-  const now = new Date().toISOString();
+async function processScheduledRetries() {                 
+  const now = new Date().toISOString();                    
 
-  const scheduledAttempts = db
-    .prepare(`
-      SELECT DISTINCT event_id
+  const scheduledAttempts = db                        
+    .prepare(`                                            
+      SELECT id, event_id, attempt_number
       FROM delivery_attempts
       WHERE status = 'pending'
         AND next_retry_at IS NOT NULL
@@ -259,7 +259,50 @@ async function processScheduledRetries() {
     .all(now);
 
   for (const attempt of scheduledAttempts) {
-    console.log(`Retry ready for event: ${attempt.event_id}`);
+    const event = db
+      .prepare("SELECT * FROM events WHERE event_id = ?")
+      .get(attempt.event_id);
+
+    if (!event) {
+      continue;
+    }
+
+    console.log(
+      `Processing scheduled retry for event: ${event.event_id}`
+    );
+
+    const delivery = await deliverWebhook(event);
+
+    const attemptStatus = delivery.status;
+    const httpStatus = delivery.httpStatus;
+    const errorMessage = delivery.errorMessage;
+
+    db.prepare(`
+  UPDATE delivery_attempts
+  SET status = ?,
+      http_status = ?,
+      error_message = ?,
+      next_retry_at = NULL
+  WHERE event_id = ?
+    AND attempt_number = ?
+`).run(
+  attemptStatus,
+  httpStatus,
+  errorMessage,
+  event.event_id,
+  attempt.attempt_number
+);
+
+    db.prepare(`
+      UPDATE events
+      SET status = ?,
+          attempt_count = attempt_count + 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE event_id = ?
+    `).run(
+      delivery.status,
+      event.event_id
+    );
   }
 }
 if (require.main === module) {
@@ -274,4 +317,7 @@ if (require.main === module) {
   }, 1000);
 }
 
-module.exports = app;
+module.exports = {
+  app,
+  processScheduledRetries,
+};
