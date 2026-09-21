@@ -103,6 +103,24 @@ I would also add authentication, structured logging, monitoring and metrics, con
 
 For horizontal scaling, multiple API and worker instances could run behind a load balancer while sharing the database and queue.
 
+### Additional production considerations
+
+**What could still cause a receiver to observe a duplicate delivery?**
+
+The system provides at-least-once delivery rather than exactly-once delivery. A duplicate can occur if the receiver successfully processes a webhook but the response is lost, times out, or the sender crashes before recording the successful result. The sender may then retry the event. Receivers should therefore use the stable `eventId` as an idempotency key and safely ignore events they have already processed.
+
+**How would you operate this with many workers?**
+
+I would use a shared PostgreSQL database and a durable job queue. Multiple workers could consume retry jobs concurrently, with each job claimed atomically so that two workers do not intentionally process the same attempt. Database transactions, row locking, or queue-level acknowledgement mechanisms would be used to coordinate workers.
+
+**How would you prevent one failing endpoint from consuming all capacity?**
+
+I would apply per-endpoint concurrency limits, rate limits, exponential backoff, and circuit breaking. Failed deliveries would be placed back into the queue with a future retry time instead of immediately consuming worker capacity. A dead-letter queue could isolate events that continue failing after the retry limit.
+
+**What metrics and alerts would you add in production?**
+
+I would monitor delivery success and failure rates, retry counts, webhook response latency, queue depth, age of the oldest pending delivery, exhausted retries, HTTP status-code distribution, and worker errors. Alerts would be configured for sustained increases in failure rate, growing queue backlog, unusually high latency, repeated retry exhaustion, and unhealthy workers.
+
 ## AI usage
 
 I used ChatGPT during development as a learning and development assistant. It helped me understand the problem requirements, plan the implementation, debug issues in the retry processor, improve the automated tests, and prepare the documentation.
